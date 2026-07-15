@@ -220,3 +220,5 @@ __marimo__/
 .env
 venv/
 venv
+
+vector_store
