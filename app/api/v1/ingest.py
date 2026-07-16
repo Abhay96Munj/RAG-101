@@ -4,7 +4,7 @@ Ingest Router  —  POST /api/v1/ingest/upload
 
 import os
 from fastapi import APIRouter, UploadFile, File
-from app.services.rag_service import process_new_pdf
+from app.services.ingestion import process_new_pdf
 from app.core.config import PDFS_DIR
 router = APIRouter()
 
