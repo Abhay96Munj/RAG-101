@@ -2,9 +2,9 @@
 Chat Router  —  POST /api/v1/chat/query
 """
 import asyncio
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from app.schemas.chat import ChatRequest, ChatResponse
-from app.services.answer import hybrid_retrieve, rerank_chunks, generate_answer, retrieve_chunks
+from app.services.answer import hybrid_retrieve, rerank_chunks, generate_answer
 
 router = APIRouter()
 
@@ -14,11 +14,17 @@ async def query(body: ChatRequest) -> ChatResponse:
     question = body.question
 
     # Run CPU-bound work in a thread so the async event loop stays unblocked
-    results = await asyncio.to_thread(hybrid_retrieve, question)
-    reranked_result = await asyncio.to_thread(rerank_chunks, question, results)
+    results = await asyncio.to_thread(hybrid_retrieve, question, body.top_k)
+    reranked_result = await asyncio.to_thread(rerank_chunks, question, results, body.rerank_top_n)
 
     context = "\n\n---\n\n".join([r["text"] for r in reranked_result])
-    answer = await asyncio.to_thread(generate_answer, context, question)
+    try:
+        answer = await asyncio.to_thread(generate_answer, context, question)
+    except Exception as e:
+        # A failed generation is an ERROR, not an answer — return 502 so
+        # clients can tell the difference instead of parsing answer text.
+        raise HTTPException(status_code=502, detail=f"LLM generation failed: {e}")
+
     return {
         "answer": answer,
         "sources": reranked_result
@@ -29,8 +35,8 @@ async def query(body: ChatRequest) -> ChatResponse:
 async def rerank(body: ChatRequest) -> ChatResponse:
     question = body.question
 
-    results = await asyncio.to_thread(hybrid_retrieve, question)
-    reranked_result = await asyncio.to_thread(rerank_chunks, question, results)
+    results = await asyncio.to_thread(hybrid_retrieve, question, body.top_k)
+    reranked_result = await asyncio.to_thread(rerank_chunks, question, results, body.rerank_top_n)
 
     return {
         "answer": "this is only for testing",

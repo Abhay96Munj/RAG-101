@@ -1,51 +1,40 @@
+"""
+Loaders for the heavy resources (LLM client, vector store, BM25 index).
+Pure functions — no shared state lives here. The lifespan in app/main.py
+calls these once at startup and stores the results in app.core.state.
+"""
 import os
-import sys
 import json
 import faiss
-import torch
 from google import genai
-from dotenv import load_dotenv
-from sentence_transformers import SentenceTransformer, CrossEncoder
 from rank_bm25 import BM25Okapi
-from app.core.config import EMBEDDING_MODEL, RERANKER_MODEL, GEMINI_MODEL, VECTOR_STORE_DIR, GEMINI_API_KEY, TOP_K, RERANK_TOP_N, SYSTEM_PROMPT, SENTENCE_OVERLAP, SENTENCES_PER_CHUNK, PDFS_DIR
+from app.core.config import GEMINI_MODEL, VECTOR_STORE_DIR, GEMINI_API_KEY
 
-
-load_dotenv()
-
-# ── Shared state — populated once by the lifespan in app/main.py ─────────────
-# These are None at import time and assigned during server startup.
-# All service modules import from here to get the live references.
-embed_model   = None
-reranker      = None
-llm_client    = None
-vector_index  = None
-vector_chunks = None
-bm25_index    = None
-
-gemini_key    = GEMINI_API_KEY
-system_prompt = SYSTEM_PROMPT
 
 # LOAD THE LLM FOR TEXT GENERATION
 def load_llm():
-    api_key = gemini_key
-    if not api_key:
-        print("[ERROR] GEMINI_API_KEY not found in .env file.")
-        sys.exit(1)
-    client = genai.Client(api_key=api_key)
+    if not GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY not found — set it in the .env file.")
+    client = genai.Client(api_key=GEMINI_API_KEY)
     print(f"[OK] Gemini model ready: {GEMINI_MODEL}")
     return client
 
+
 # LOAD THE VECTOR DB
-def load_vector_store():
+def load_vector_store(dimension: int):
+    """
+    Load the FAISS index + chunk metadata from disk.
+
+    `dimension` must come from the loaded embedding model
+    (embed_model.get_sentence_embedding_dimension()) so an empty index
+    always matches whatever model is configured — no hardcoded sizes.
+    """
     index_path = os.path.join(VECTOR_STORE_DIR, "index.faiss")
     chunks_path = os.path.join(VECTOR_STORE_DIR, "chunks.json")
     # 1. If files don't exist, build an empty index & list
     if not os.path.exists(index_path) or not os.path.exists(chunks_path):
         print("[INFO] Vector store files not found. Initializing empty vector store.")
-        dimension = 384
-        index = faiss.IndexFlatIP(dimension)
-        chunks = []
-        return index, chunks
+        return faiss.IndexFlatIP(dimension), []
     # 2. Try loading the files safely
     try:
         index = faiss.read_index(index_path)
@@ -54,9 +43,7 @@ def load_vector_store():
             chunks = json.loads(content) if content else []
     except Exception as e:
         print(f"[WARNING] Failed to load index, initializing empty: {e}")
-        dimension = 384
-        index = faiss.IndexFlatIP(dimension)
-        chunks = []
+        return faiss.IndexFlatIP(dimension), []
     return index, chunks
 
 

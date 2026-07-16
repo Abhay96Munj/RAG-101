@@ -1,24 +1,48 @@
-from sentence_transformers import SentenceTransformer, CrossEncoder
+from sentence_transformers import SentenceTransformer
 import os
 import re
 import numpy as np
 import json
 import faiss
 from app.core.config import SENTENCE_OVERLAP, SENTENCES_PER_CHUNK, VECTOR_STORE_DIR
-from app.services.load_llm import vector_index, vector_chunks, embed_model, build_bm25_index
-import app.services.load_llm as llm_state
+from app.core.state import state
+from app.services.load_llm import build_bm25_index
 from pypdf import PdfReader
 
+
+def _persist_vector_store(index, chunks: list[dict]):
+    """
+    Save the FAISS index + chunk metadata to disk ATOMICALLY.
+
+    Write each file to a .tmp sibling first, then os.replace() it over the
+    real file. os.replace is atomic, so a crash mid-write can never leave a
+    half-written index.faiss or chunks.json on disk. (A crash between the
+    two replace calls can still leave them one step apart — a real system
+    would use a single transactional store — but the window shrinks from
+    "the whole write" to "two syscalls".)
+    """
+    os.makedirs(VECTOR_STORE_DIR, exist_ok=True)
+    index_path  = os.path.join(VECTOR_STORE_DIR, "index.faiss")
+    chunks_path = os.path.join(VECTOR_STORE_DIR, "chunks.json")
+
+    faiss.write_index(index, index_path + ".tmp")
+    with open(chunks_path + ".tmp", "w", encoding="utf-8") as f:
+        json.dump(chunks, f, indent=2, ensure_ascii=False)
+
+    os.replace(index_path + ".tmp", index_path)
+    os.replace(chunks_path + ".tmp", chunks_path)
+
 # EXTRACT TEXT FROM PDF
-def extract_text_from_pdf(pdf_path: str) -> str:
-    """Read a PDF file and return all its text as a single string."""
+def extract_pages_from_pdf(pdf_path: str) -> list[str]:
+    """
+    Read a PDF file and return the text of each page as a list.
+
+    Keeping pages separate (instead of one big string) lets each chunk
+    remember which page it came from — needed for citations like
+    "see page 12 of report.pdf".
+    """
     reader = PdfReader(pdf_path)
-    text = ""
-    for page in reader.pages:
-        page_text = page.extract_text()
-        if page_text:
-            text += page_text + "\n"
-    return text
+    return [page.extract_text() or "" for page in reader.pages]
 
 
 def chunk_text(
@@ -69,61 +93,50 @@ def build_vector_store(all_chunks: list[dict], model: SentenceTransformer):
     dimension = embeddings.shape[1]
     index = faiss.IndexFlatIP(dimension)
     index.add(embeddings)
-    
-    # Save to disk
-    os.makedirs(VECTOR_STORE_DIR, exist_ok=True)
-    
-    faiss.write_index(index, os.path.join(VECTOR_STORE_DIR, "index.faiss"))
-    with open(os.path.join(VECTOR_STORE_DIR, "chunks.json"), "w", encoding="utf-8") as f:
-        json.dump(all_chunks, f, indent=2, ensure_ascii=False)
-    
+
+    _persist_vector_store(index, all_chunks)
+
     print(f"  [OK] Saved FAISS index ({index.ntotal} vectors, {dimension}D)")
     print(f"  [OK] Saved chunk metadata to chunks.json")
 
 
 def process_new_pdf(pdf_path: str, filename: str):
-    global vector_chunks, vector_index
-    
-    # 1. Extract text
-    text = extract_text_from_pdf(pdf_path)
-    
-    # 2. Chunk text
-    new_raw_chunks = chunk_text(text)
-    if not new_raw_chunks:
-        return 0
-    
-    # 3. Create metadata objects
+    # 1. Extract text page by page, then chunk each page separately
+    #    so every chunk keeps a real page number.
+    pages = extract_pages_from_pdf(pdf_path)
+
     new_chunks = []
-    for i, chunk in enumerate(new_raw_chunks):
-        new_chunks.append({
-            "text": chunk,
-            "source": filename,
-            "page_num": filename.page,
-            "chunk_index": i
-        })
-        
-    # 4. Embed ONLY the new chunks
+    chunk_index = 0   # unique per-document index across all pages
+    for page_num, page_text in enumerate(pages, start=1):
+        for chunk in chunk_text(page_text):
+            new_chunks.append({
+                "text": chunk,
+                "source": filename,
+                "page_num": page_num,
+                "chunk_index": chunk_index
+            })
+            chunk_index += 1
+
+    if not new_chunks:
+        return 0
+
+    # 2. Embed ONLY the new chunks — done OUTSIDE the lock because it's the
+    #    slow part (seconds) and touches no shared state.
     new_texts = [c["text"] for c in new_chunks]
     print(f"[*] Embedding {len(new_texts)} new chunks...")
-    new_embeddings = embed_model.encode(new_texts, show_progress_bar=True, normalize_embeddings=True)
+    new_embeddings = state.embed_model.encode(new_texts, show_progress_bar=True, normalize_embeddings=True)
     new_embeddings = np.array(new_embeddings, dtype="float32")
-    
-    # 5. Add new embeddings directly to our active FAISS index
-    vector_index.add(new_embeddings)
-    
-    # 6. Append new chunks to our active chunk metadata list
-    vector_chunks.extend(new_chunks)
-    
-    # 7. Rebuild BM25 index so keyword search stays in sync
-    llm_state.bm25_index = build_bm25_index(vector_chunks)
-    
-    # 8. Persist updated index and metadata list to disk
-    index_path = os.path.join(VECTOR_STORE_DIR, "index.faiss")
-    chunks_path = os.path.join(VECTOR_STORE_DIR, "chunks.json")
-    
-    faiss.write_index(vector_index, index_path)
-    with open(chunks_path, "w", encoding="utf-8") as f:
-        json.dump(vector_chunks, f, indent=2, ensure_ascii=False)
-        
+
+    # 3. Mutate all three shared structures under the lock so a concurrent
+    #    query can never see the FAISS index and chunk list out of sync.
+    with state.lock:
+        state.vector_index.add(new_embeddings)
+        state.vector_chunks.extend(new_chunks)
+        state.bm25_index = build_bm25_index(state.vector_chunks)
+
+        # 4. Persist while still holding the lock — snapshotting a stable,
+        #    consistent view of index + chunks to disk (atomic writes).
+        _persist_vector_store(state.vector_index, state.vector_chunks)
+
     print(f"[OK] Added {len(new_chunks)} chunks to FAISS, BM25 rebuilt, changes saved.")
     return len(new_chunks)
