@@ -16,12 +16,13 @@ PDFS_DIR = os.path.join(BASE_DIR, "pdfs")
 
 # ── Models ────────────────────────────────────────────────────────
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
-RERANKER_MODEL = os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-base")
+# cross-encoder/ms-marco-MiniLM-L-6-v2 is ~4x faster than bge-reranker-base on CPU
+RERANKER_MODEL = os.getenv("RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
 
 # ── Retrieval ─────────────────────────────────────────────────────
-TOP_K = int(os.getenv("TOP_K", 20))
-RERANK_TOP_N = int(os.getenv("RERANK_TOP_N", 5))
+TOP_K = int(os.getenv("TOP_K", 10))
+RERANK_TOP_N = int(os.getenv("RERANK_TOP_N", 3))
 
 # ── API Keys ──────────────────────────────────────────────────────
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")

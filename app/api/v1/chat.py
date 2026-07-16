@@ -1,10 +1,10 @@
 """
 Chat Router  —  POST /api/v1/chat/query
 """
-
+import asyncio
 from fastapi import APIRouter
 from app.schemas.chat import ChatRequest, ChatResponse
-from app.services.rag_service import retrieve_chunks, rerank_chunks, generate_answer
+from app.services.answer import hybrid_retrieve, rerank_chunks, generate_answer, retrieve_chunks
 
 router = APIRouter()
 
@@ -13,11 +13,12 @@ router = APIRouter()
 async def query(body: ChatRequest) -> ChatResponse:
     question = body.question
 
-    results = retrieve_chunks(question)
-    reranked_result = rerank_chunks(question, results)
+    # Run CPU-bound work in a thread so the async event loop stays unblocked
+    results = await asyncio.to_thread(hybrid_retrieve, question)
+    reranked_result = await asyncio.to_thread(rerank_chunks, question, results)
 
     context = "\n\n---\n\n".join([r["text"] for r in reranked_result])
-    answer = generate_answer(context, question)
+    answer = await asyncio.to_thread(generate_answer, context, question)
     return {
         "answer": answer,
         "sources": reranked_result
@@ -28,10 +29,10 @@ async def query(body: ChatRequest) -> ChatResponse:
 async def rerank(body: ChatRequest) -> ChatResponse:
     question = body.question
 
-    results = retrieve_chunks(question)
-    reranked_result = rerank_chunks(question, results)
+    results = await asyncio.to_thread(hybrid_retrieve, question)
+    reranked_result = await asyncio.to_thread(rerank_chunks, question, results)
 
     return {
-        "answer": "this is only testing",
+        "answer": "this is only for testing",
         "sources": reranked_result
     }
