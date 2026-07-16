@@ -9,6 +9,7 @@ Flow per request:
   5. Close log session (flushes to JSONL)
 """
 from google.genai import types
+from langfuse import observe, get_client
 from app.core.config import GEMINI_MODEL
 from app.services.agent_logger import AgentSession
 from app.services.tools import TOOL_DECLARATIONS, dispatch_tool
@@ -34,6 +35,27 @@ Rules:
 """
 
 
+@observe(as_type="generation", name="gemini-agent-turn", capture_input=False)
+def _call_gemini(client, conversation, config):
+    """One Gemini turn, traced as a generation with token usage."""
+    response = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=conversation,
+        config=config,
+    )
+    usage = getattr(response, "usage_metadata", None)
+    if usage:
+        get_client().update_current_generation(
+            model=GEMINI_MODEL,
+            usage_details={
+                "input":  usage.prompt_token_count or 0,
+                "output": usage.candidates_token_count or 0,
+            },
+        )
+    return response
+
+
+@observe(as_type="agent", name="agent-loop")
 def run_agent(question: str) -> dict:
     """
     Run the full agent loop for a question.
@@ -49,6 +71,11 @@ def run_agent(question: str) -> dict:
     client     = state.llm_client
     tool_log   = []
 
+    # Cross-reference: stamp the JSONL logger's query_id onto the Langfuse
+    # trace, so a line in logs/agent_sessions.jsonl can be matched to its
+    # trace in the UI (filter/search by metadata.query_id).
+    get_client().update_current_span(metadata={"query_id": session.query_id})
+
     # Build initial conversation
     conversation: list[types.Content] = [
         types.Content(role="user", parts=[types.Part(text=question)])
@@ -61,11 +88,7 @@ def run_agent(question: str) -> dict:
 
     for iteration in range(1, MAX_ITERATIONS + 1):
 
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=conversation,
-            config=config,
-        )
+        response = _call_gemini(client, conversation, config)
 
         response_content = response.candidates[0].content
         conversation.append(response_content)

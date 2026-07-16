@@ -23,6 +23,10 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
 # ── Retrieval ─────────────────────────────────────────────────────
 TOP_K = int(os.getenv("TOP_K", 10))
 RERANK_TOP_N = int(os.getenv("RERANK_TOP_N", 3))
+# Chunks whose CrossEncoder score falls below this are dropped instead of
+# being fed to the LLM. On ms-marco-MiniLM real matches score well above 0,
+# irrelevant context well below (eval baseline: negatives at -3.7 to -10.5).
+RERANK_SCORE_THRESHOLD = float(os.getenv("RERANK_SCORE_THRESHOLD", 0.0))
 
 # ── API Keys ──────────────────────────────────────────────────────
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")

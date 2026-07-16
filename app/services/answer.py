@@ -1,8 +1,12 @@
-from app.core.config import GEMINI_MODEL, TOP_K, RERANK_TOP_N, SYSTEM_PROMPT
+from langfuse import observe, get_client
+from app.core.config import (
+    GEMINI_MODEL, TOP_K, RERANK_TOP_N, RERANK_SCORE_THRESHOLD, SYSTEM_PROMPT,
+)
 from app.core.state import state
 
 
 # ── FAISS (dense / semantic) retrieval ───────────────────────────────────────
+@observe(as_type="retriever", name="faiss-dense")
 def retrieve_chunks(query: str, top_k: int = TOP_K) -> list:
     """Retrieve top-K chunks using dense vector similarity (FAISS)."""
     prefixed = f"Represent this sentence for searching relevant passages: {query}"
@@ -34,6 +38,7 @@ def retrieve_chunks(query: str, top_k: int = TOP_K) -> list:
 
 
 # ── BM25 (sparse / keyword) retrieval ────────────────────────────────────────
+@observe(as_type="retriever", name="bm25-sparse")
 def retrieve_bm25(query: str, top_k: int = TOP_K) -> list:
     """
     Retrieve top-K chunks using BM25 keyword matching.
@@ -95,6 +100,7 @@ def reciprocal_rank_fusion(dense_results: list, sparse_results: list, k: int = 6
 
 
 # ── Hybrid retrieval (FAISS + BM25 + RRF) ────────────────────────────────────
+@observe(name="hybrid-retrieve")
 def hybrid_retrieve(query: str, top_k: int = TOP_K) -> list:
     """
     Run both FAISS and BM25 retrieval, then merge with RRF.
@@ -106,19 +112,29 @@ def hybrid_retrieve(query: str, top_k: int = TOP_K) -> list:
 
 
 # ── Rerank ────────────────────────────────────────────────────────────────────
+@observe(name="rerank")
 def rerank_chunks(query: str, candidates: list, top_n: int = RERANK_TOP_N) -> list:
-    """Re-score candidates with a CrossEncoder and keep the top-N."""
+    """
+    Re-score candidates with a CrossEncoder and keep the top-N.
+
+    Candidates scoring below RERANK_SCORE_THRESHOLD are dropped entirely —
+    the reranker is telling us they don't answer the query, and bad context
+    is worse than no context. An empty return means "nothing relevant found"
+    and callers should refuse instead of calling the LLM.
+    """
     pairs  = [(query, c["text"]) for c in candidates]
     scores = state.reranker.predict(pairs)
 
     for cand, score in zip(candidates, scores):
         cand["rerank_score"] = float(score)
 
-    reranked = sorted(candidates, key=lambda x: x["rerank_score"], reverse=True)
+    reranked = [c for c in candidates if c["rerank_score"] >= RERANK_SCORE_THRESHOLD]
+    reranked = sorted(reranked, key=lambda x: x["rerank_score"], reverse=True)
     return reranked[:top_n]
 
 
 # ── LLM generation ────────────────────────────────────────────────────────────
+@observe(as_type="generation", name="gemini-answer")
 def generate_answer(context: str, question: str) -> str:
     """
     Generate the final answer with Gemini.
@@ -132,4 +148,16 @@ def generate_answer(context: str, question: str) -> str:
         model=GEMINI_MODEL,
         contents=prompt
     )
+
+    # Report model + token usage to Langfuse so traces show cost/latency
+    # per generation. No-op when tracing is disabled (no keys set).
+    usage = getattr(response, "usage_metadata", None)
+    if usage:
+        get_client().update_current_generation(
+            model=GEMINI_MODEL,
+            usage_details={
+                "input":  usage.prompt_token_count or 0,
+                "output": usage.candidates_token_count or 0,
+            },
+        )
     return response.text.strip()

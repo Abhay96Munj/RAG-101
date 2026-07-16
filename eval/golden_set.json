@@ -1,0 +1,187 @@
+[
+  {
+    "id": "q01",
+    "question": "How much did the Sunseeker Resort cost to build in total?",
+    "relevant": [{ "source": "blackstone.pdf", "page_num": 2 }],
+    "answer_keywords": ["720 million"],
+    "type": "keyword"
+  },
+  {
+    "id": "q02",
+    "question": "Which private equity firm wants to buy the struggling Florida hotel property from the airline that built it?",
+    "relevant": [{ "source": "blackstone.pdf", "page_num": 2 }],
+    "answer_keywords": ["Blackstone"],
+    "type": "paraphrase"
+  },
+  {
+    "id": "q03",
+    "question": "How many rooms does the Sunseeker Resort compound have?",
+    "relevant": [{ "source": "blackstone.pdf", "page_num": 2 }],
+    "answer_keywords": ["785"],
+    "type": "keyword"
+  },
+  {
+    "id": "q04",
+    "question": "How much profit does Delta Air Lines expect to generate in 2025?",
+    "relevant": [{ "source": "delta_air.pdf", "page_num": 2 }],
+    "answer_keywords": ["5 billion"],
+    "type": "keyword"
+  },
+  {
+    "id": "q05",
+    "question": "What does the carrier plan to spend the bulk of its spare cash on?",
+    "relevant": [{ "source": "delta_air.pdf", "page_num": 2 }],
+    "answer_keywords": ["debt"],
+    "type": "paraphrase"
+  },
+  {
+    "id": "q06",
+    "question": "Who is the CEO of Delta Air Lines?",
+    "relevant": [{ "source": "delta_air.pdf", "page_num": 2 }],
+    "answer_keywords": ["Ed Bastian"],
+    "type": "keyword"
+  },
+  {
+    "id": "q07",
+    "question": "Roughly how many flights did the airline cancel during the government shutdown?",
+    "relevant": [{ "source": "delta_air.pdf", "page_num": 2 }],
+    "answer_keywords": ["2,000"],
+    "type": "paraphrase"
+  },
+  {
+    "id": "q08",
+    "question": "What emissions reduction target did EU countries agree on for 2040?",
+    "relevant": [
+      { "source": "emission_reduction.pdf", "page_num": 1 },
+      { "source": "emission_reduction.pdf", "page_num": 2 }
+    ],
+    "answer_keywords": ["90%"],
+    "type": "keyword"
+  },
+  {
+    "id": "q09",
+    "question": "By what year has the European bloc committed to reaching net zero?",
+    "relevant": [{ "source": "emission_reduction.pdf", "page_num": 3 }],
+    "answer_keywords": ["2050"],
+    "type": "paraphrase"
+  },
+  {
+    "id": "q10",
+    "question": "What is the new limit on international credits under Article 6 as a share of the EU's baseline 1990 emissions?",
+    "relevant": [{ "source": "emission_reduction.pdf", "page_num": 2 }],
+    "answer_keywords": ["5%"],
+    "type": "keyword"
+  },
+  {
+    "id": "q11",
+    "question": "How much US Treasury debt do European investors hold?",
+    "relevant": [{ "source": "europe.pdf", "page_num": 2 }],
+    "answer_keywords": ["2 trillion"],
+    "type": "keyword"
+  },
+  {
+    "id": "q12",
+    "question": "How much trade in goods and services flows between America and the European Union every day?",
+    "relevant": [{ "source": "europe.pdf", "page_num": 1 }],
+    "answer_keywords": ["5.4 billion"],
+    "type": "paraphrase"
+  },
+  {
+    "id": "q13",
+    "question": "Which Danish pension fund said it would sell its roughly $100 million in Treasuries?",
+    "relevant": [{ "source": "europe.pdf", "page_num": 2 }],
+    "answer_keywords": ["AkademikerPension"],
+    "type": "keyword"
+  },
+  {
+    "id": "q14",
+    "question": "Which judge dismissed the Trump administration's lawsuit against the Maryland federal bench?",
+    "relevant": [{ "source": "judge_trump.pdf", "page_num": 1 }],
+    "answer_keywords": ["Cullen"],
+    "type": "keyword"
+  },
+  {
+    "id": "q15",
+    "question": "Why did every district judge in Maryland have to step aside from hearing the case?",
+    "relevant": [{ "source": "judge_trump.pdf", "page_num": 1 }],
+    "answer_keywords": ["recuse"],
+    "type": "paraphrase"
+  },
+  {
+    "id": "q16",
+    "question": "How long a reprieve from removal did the Maryland standing order grant to immigrants who filed a habeas petition?",
+    "relevant": [{ "source": "judge_trump.pdf", "page_num": 2 }],
+    "answer_keywords": ["two-day", "two days"],
+    "type": "keyword"
+  },
+  {
+    "id": "q17",
+    "question": "Which Japanese trading company might pull out of its offshore wind farm projects?",
+    "relevant": [{ "source": "Mitsubishi.pdf", "page_num": 1 }],
+    "answer_keywords": ["Mitsubishi"],
+    "type": "paraphrase"
+  },
+  {
+    "id": "q18",
+    "question": "By how much are shoe prices forecast to soar because of Trump's tariffs?",
+    "relevant": [{ "source": "Trum_tariffs.pdf", "page_num": 1 }],
+    "answer_keywords": ["40 percent", "40%"],
+    "type": "keyword"
+  },
+  {
+    "id": "q19",
+    "question": "How much more could a new automobile cost in the near term?",
+    "relevant": [{ "source": "Trum_tariffs.pdf", "page_num": 1 }],
+    "answer_keywords": ["5,800"],
+    "type": "paraphrase"
+  },
+  {
+    "id": "q20",
+    "question": "What is the maximum fine for playing music out loud on London public transport?",
+    "relevant": [{ "source": "london_headphones.pdf", "page_num": 2 }],
+    "answer_keywords": ["1,000"],
+    "type": "keyword"
+  },
+  {
+    "id": "q21",
+    "question": "What derogatory term do Britons use for blasting music from a phone speaker in public?",
+    "relevant": [{ "source": "london_headphones.pdf", "page_num": 1 }],
+    "answer_keywords": ["sodcasting"],
+    "type": "paraphrase"
+  },
+  {
+    "id": "q22",
+    "question": "What did Trump say Coca-Cola agreed to start using in Coke in the United States?",
+    "relevant": [{ "source": "coca_cola.pdf", "page_num": 1 }],
+    "answer_keywords": ["cane sugar"],
+    "type": "keyword"
+  },
+  {
+    "id": "q23",
+    "question": "In what year did Coca-Cola start blending corn syrup into its flagship drink?",
+    "relevant": [{ "source": "coca_cola.pdf", "page_num": 1 }],
+    "answer_keywords": ["1980"],
+    "type": "paraphrase"
+  },
+  {
+    "id": "q24",
+    "question": "What was Blackstone's total assets under management last quarter?",
+    "relevant": [],
+    "answer_keywords": [],
+    "type": "negative"
+  },
+  {
+    "id": "q25",
+    "question": "Who won the 2026 FIFA World Cup?",
+    "relevant": [],
+    "answer_keywords": [],
+    "type": "negative"
+  },
+  {
+    "id": "q26",
+    "question": "What did the European Central Bank decide about interest rates this month?",
+    "relevant": [],
+    "answer_keywords": [],
+    "type": "negative"
+  }
+]
