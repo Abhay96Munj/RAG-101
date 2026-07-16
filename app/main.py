@@ -11,22 +11,19 @@ which avoids unnecessarily reloading model weights and rebuilding BM25 on every 
 
 from contextlib import asynccontextmanager
 import torch
-import faiss
 from fastapi import FastAPI
 from sentence_transformers import SentenceTransformer, CrossEncoder
-from rank_bm25 import BM25Okapi
-from app.api.v1 import chat, ingest
-from app.core.config import EMBEDDING_MODEL, RERANKER_MODEL, VECTOR_STORE_DIR
+from app.api.v1 import chat, ingest, agent
+from app.core.config import EMBEDDING_MODEL, RERANKER_MODEL
+from app.core.state import state
 from app.services.load_llm import load_llm, load_vector_store, build_bm25_index
-import app.services.load_llm as llm_state
-import json, os
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Runs once at server startup — loads all heavy resources into app.state.
-    Nothing here re-runs on hot reload of router/schema files.
+    Runs once at server startup — loads all heavy resources into the shared
+    RAGState. Nothing here re-runs on hot reload of router/schema files.
     """
     print("\n[*] Starting up — loading models and indexes...")
 
@@ -37,21 +34,27 @@ async def lifespan(app: FastAPI):
 
     # 2. Embedding model
     print(f"[*] Loading embedding model: {EMBEDDING_MODEL}")
-    llm_state.embed_model = SentenceTransformer(EMBEDDING_MODEL, device=device)
+    state.embed_model = SentenceTransformer(EMBEDDING_MODEL, device=device)
 
     # 3. Reranker
     print(f"[*] Loading reranker: {RERANKER_MODEL}")
-    llm_state.reranker = CrossEncoder(RERANKER_MODEL, device=device)
+    state.reranker = CrossEncoder(RERANKER_MODEL, device=device)
 
     # 4. LLM client (Gemini)
-    llm_state.llm_client = load_llm()
+    state.llm_client = load_llm()
 
-    # 5. Vector store (FAISS + chunks)
-    llm_state.vector_index, llm_state.vector_chunks = load_vector_store()
-    print(f"[OK] FAISS index loaded: {llm_state.vector_index.ntotal} vectors")
+    # 5. Vector store (FAISS + chunks) — dimension comes from the live
+    #    embedding model, so changing EMBEDDING_MODEL can't cause a mismatch.
+    dimension = state.embed_model.get_embedding_dimension()
+    state.vector_index, state.vector_chunks = load_vector_store(dimension)
+    print(f"[OK] FAISS index loaded: {state.vector_index.ntotal} vectors")
 
     # 6. BM25 index
-    llm_state.bm25_index = build_bm25_index(llm_state.vector_chunks)
+    state.bm25_index = build_bm25_index(state.vector_chunks)
+
+    # Expose the state object the idiomatic FastAPI way too, so request
+    # handlers can use request.app.state.rag if they prefer.
+    app.state.rag = state
 
     print("[OK] All resources loaded. Server is ready.\n")
     yield
@@ -69,6 +72,7 @@ app = FastAPI(
 # Register routers
 app.include_router(chat.router,   prefix="/api/v1/chat",   tags=["Chat"])
 app.include_router(ingest.router, prefix="/api/v1/ingest", tags=["Ingest"])
+app.include_router(agent.router,  prefix="/api/v1/agent",  tags=["Agent"])
 
 
 @app.get("/health", tags=["Health"])
