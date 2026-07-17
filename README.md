@@ -137,7 +137,7 @@ The generation eval respects the Gemini free-tier limit (15 requests/min) via a 
 ## Configuration
 
 All via environment variables (see `app/core/config.py`):
-
+Please check Google AI Studio on how to create your Project and API key, also to check what models are available in your API Tier.
 | Variable | Default | Meaning |
 |---|---|---|
 | `GEMINI_API_KEY` | — (required) | Gemini API key |
