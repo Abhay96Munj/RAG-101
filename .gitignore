@@ -228,3 +228,4 @@ logs
 runs
 # Claude Code local state (worktrees, settings)
 .claude/
+node_modules
