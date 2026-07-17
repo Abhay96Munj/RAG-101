@@ -9,9 +9,42 @@
 name: rag-101
 
 services:
+  # The RAG API itself. In the "app" profile so it does NOT start by default:
+  #   docker compose up -d                → Langfuse stack only (daily dev:
+  #                                         run uvicorn locally with hot reload)
+  #   docker compose --profile app up -d  → full stack incl. the API
+  rag-api:
+    build: .
+    profiles: ["app"]
+    restart: unless-stopped
+    mem_limit: 3g
+    ports:
+      - 8000:8000
+    env_file:
+      - .env
+    environment:
+      # Overrides the values from .env: inside the compose network, Langfuse
+      # is reached by service name — localhost would be this container itself.
+      # Both names must be set: the SDK prefers LANGFUSE_BASE_URL over the
+      # legacy LANGFUSE_HOST, so a BASE_URL from .env would win otherwise.
+      LANGFUSE_HOST: http://langfuse-web:3000
+      LANGFUSE_BASE_URL: http://langfuse-web:3000
+    volumes:
+      # App state lives on the host, so index/PDFs/logs survive the container
+      - ./vector_store:/app/vector_store
+      - ./pdfs:/app/pdfs
+      - ./logs:/app/logs
+      # Model weights cache — downloaded on first start, reused ever after
+      - hf_cache:/root/.cache/huggingface
+    depends_on:
+      - langfuse-web
+
   langfuse-worker:
     image: docker.io/langfuse/langfuse-worker:3
-    restart: always
+    # unless-stopped (not always): a manual `docker compose stop` stays
+    # stopped across Docker Desktop restarts — run the stack only when needed.
+    restart: unless-stopped
+    mem_limit: 1500m
     depends_on: &langfuse-depends-on
       postgres:
         condition: service_healthy
@@ -21,8 +54,6 @@ services:
         condition: service_healthy
       clickhouse:
         condition: service_healthy
-    ports:
-      - 127.0.0.1:3030:3030
     environment: &langfuse-worker-env
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/postgres} # CHANGEME
@@ -35,9 +66,6 @@ services:
       CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clickhouse}
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse} # CHANGEME
       CLICKHOUSE_CLUSTER_ENABLED: ${CLICKHOUSE_CLUSTER_ENABLED:-false}
-      LANGFUSE_USE_AZURE_BLOB: ${LANGFUSE_USE_AZURE_BLOB:-false}
-      LANGFUSE_USE_OCI_NATIVE_OBJECT_STORAGE: ${LANGFUSE_USE_OCI_NATIVE_OBJECT_STORAGE:-false}
-      LANGFUSE_OCI_AUTH_TYPE: ${LANGFUSE_OCI_AUTH_TYPE:-workload_identity}
       LANGFUSE_S3_EVENT_UPLOAD_BUCKET: ${LANGFUSE_S3_EVENT_UPLOAD_BUCKET:-langfuse}
       LANGFUSE_S3_EVENT_UPLOAD_REGION: ${LANGFUSE_S3_EVENT_UPLOAD_REGION:-auto}
       LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID:-minio}
@@ -52,50 +80,30 @@ services:
       LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: ${LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT:-http://localhost:9090}
       LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: ${LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE:-true}
       LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: ${LANGFUSE_S3_MEDIA_UPLOAD_PREFIX:-media/}
-      LANGFUSE_S3_BATCH_EXPORT_ENABLED: ${LANGFUSE_S3_BATCH_EXPORT_ENABLED:-false}
-      LANGFUSE_S3_BATCH_EXPORT_BUCKET: ${LANGFUSE_S3_BATCH_EXPORT_BUCKET:-langfuse}
-      LANGFUSE_S3_BATCH_EXPORT_PREFIX: ${LANGFUSE_S3_BATCH_EXPORT_PREFIX:-exports/}
-      LANGFUSE_S3_BATCH_EXPORT_REGION: ${LANGFUSE_S3_BATCH_EXPORT_REGION:-auto}
-      LANGFUSE_S3_BATCH_EXPORT_ENDPOINT: ${LANGFUSE_S3_BATCH_EXPORT_ENDPOINT:-http://minio:9000}
-      LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT: ${LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT:-http://localhost:9090}
-      LANGFUSE_S3_BATCH_EXPORT_ACCESS_KEY_ID: ${LANGFUSE_S3_BATCH_EXPORT_ACCESS_KEY_ID:-minio}
-      LANGFUSE_S3_BATCH_EXPORT_SECRET_ACCESS_KEY: ${LANGFUSE_S3_BATCH_EXPORT_SECRET_ACCESS_KEY:-miniosecret} # CHANGEME
-      LANGFUSE_S3_BATCH_EXPORT_FORCE_PATH_STYLE: ${LANGFUSE_S3_BATCH_EXPORT_FORCE_PATH_STYLE:-true}
-      LANGFUSE_INGESTION_QUEUE_DELAY_MS: ${LANGFUSE_INGESTION_QUEUE_DELAY_MS:-}
-      LANGFUSE_INGESTION_CLICKHOUSE_WRITE_INTERVAL_MS: ${LANGFUSE_INGESTION_CLICKHOUSE_WRITE_INTERVAL_MS:-}
       REDIS_HOST: ${REDIS_HOST:-redis}
       REDIS_PORT: ${REDIS_PORT:-6379}
       REDIS_AUTH: ${REDIS_AUTH:-myredissecret} # CHANGEME
-      LANGFUSE_BULLMQ_SKIP_REDIS_VERSION_CHECK: ${LANGFUSE_BULLMQ_SKIP_REDIS_VERSION_CHECK:-false}
-      REDIS_TLS_ENABLED: ${REDIS_TLS_ENABLED:-false}
-      REDIS_TLS_CA: ${REDIS_TLS_CA:-/certs/ca.crt}
-      REDIS_TLS_CERT: ${REDIS_TLS_CERT:-/certs/redis.crt}
-      REDIS_TLS_KEY: ${REDIS_TLS_KEY:-/certs/redis.key}
-      EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS:-}
-      SMTP_CONNECTION_URL: ${SMTP_CONNECTION_URL:-}
 
   langfuse-web:
     image: docker.io/langfuse/langfuse:3
-    restart: always
+    restart: unless-stopped
+    # Node sizes its JS heap from the container limit (~half of it); 1g gave
+    # it a ~512MB heap and it OOM'd at startup. 2g is the practical minimum.
+    mem_limit: 2g
     depends_on: *langfuse-depends-on
     ports:
       - 3000:3000
     environment:
       <<: *langfuse-worker-env
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-mysecret} # CHANGEME
-      LANGFUSE_INIT_ORG_ID: ${LANGFUSE_INIT_ORG_ID:-}
-      LANGFUSE_INIT_ORG_NAME: ${LANGFUSE_INIT_ORG_NAME:-}
-      LANGFUSE_INIT_PROJECT_ID: ${LANGFUSE_INIT_PROJECT_ID:-}
-      LANGFUSE_INIT_PROJECT_NAME: ${LANGFUSE_INIT_PROJECT_NAME:-}
-      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_INIT_PROJECT_PUBLIC_KEY:-}
-      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_INIT_PROJECT_SECRET_KEY:-}
-      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:-}
-      LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME:-}
-      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-}
 
   clickhouse:
     image: docker.io/clickhouse/clickhouse-server
-    restart: always
+    restart: unless-stopped
+    # ClickHouse sizes its caches from available memory and will happily take
+    # several GB unbounded. It respects the container limit; 1.5g is plenty
+    # at local trace volumes.
+    mem_limit: 1500m
     user: "101:101"
     environment:
       CLICKHOUSE_DB: default
@@ -116,7 +124,8 @@ services:
 
   minio:
     image: cgr.dev/chainguard/minio
-    restart: always
+    restart: unless-stopped
+    mem_limit: 512m
     entrypoint: sh
     # create the 'langfuse' bucket before starting the service
     command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
@@ -137,7 +146,8 @@ services:
 
   redis:
     image: docker.io/redis:7
-    restart: always
+    restart: unless-stopped
+    mem_limit: 256m
     # CHANGEME: row below to secure redis password
     command: >
       --requirepass ${REDIS_AUTH:-myredissecret}
@@ -154,7 +164,8 @@ services:
 
   postgres:
     image: docker.io/postgres:${POSTGRES_VERSION:-17}
-    restart: always
+    restart: unless-stopped
+    mem_limit: 512m
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 3s
@@ -174,6 +185,8 @@ services:
       - langfuse_postgres_data:/var/lib/postgresql/data
 
 volumes:
+  hf_cache:
+    driver: local
   langfuse_postgres_data:
     driver: local
   langfuse_clickhouse_data:

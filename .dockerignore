@@ -1,0 +1,23 @@
+# Keep the build context small — without this, `docker build` ships the
+# whole folder (venv, git history, PDFs, index) to the daemon every build.
+.venv/
+.git/
+__pycache__/
+*.pyc
+
+# Runtime state — mounted as volumes at run time, never baked into the image
+vector_store/
+pdfs/
+logs/
+
+# Secrets — passed via env_file in compose, must not end up in image layers
+.env
+
+# Not needed inside the container
+eval/
+docs/
+tests/
+README.md
+LICENSE
+api_test.py
+main.py
