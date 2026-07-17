@@ -23,6 +23,12 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
 # ── Retrieval ─────────────────────────────────────────────────────
 TOP_K = int(os.getenv("TOP_K", 10))
 RERANK_TOP_N = int(os.getenv("RERANK_TOP_N", 3))
+# Chunks whose CrossEncoder score falls below this are dropped instead of
+# being fed to the LLM. Calibrated on the golden set (2026-07-17 probe):
+# negatives top out at -3.69, while a hard paraphrase real question sits at
+# -1.99 — so -2.5 splits them. 0.0 was too aggressive (2 false refusals).
+# NOTE: tuned on 26 questions; margins are thin, revisit as the set grows.
+RERANK_SCORE_THRESHOLD = float(os.getenv("RERANK_SCORE_THRESHOLD", -2.5))
 
 # ── API Keys ──────────────────────────────────────────────────────
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")

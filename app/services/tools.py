@@ -9,6 +9,7 @@ import ast
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from google.genai import types
+from langfuse import observe, get_client
 from app.core.state import state
 from app.services.answer import hybrid_retrieve, rerank_chunks
 
@@ -22,6 +23,9 @@ def search_documents(query: str) -> str:
     if not results:
         return "No relevant content found in the documents."
     reranked = rerank_chunks(query, results)
+    if not reranked:
+        # All candidates fell below the rerank score threshold
+        return "No relevant content found in the documents."
     chunks = [f"[Source: {r['source']}]\n{r['text']}" for r in reranked]
     return "\n\n---\n\n".join(chunks)
 
@@ -171,8 +175,11 @@ TOOL_REGISTRY = {
     "list_knowledge_base": lambda _: list_knowledge_base(),
 }
 
+@observe(as_type="tool")
 def dispatch_tool(name: str, args: dict) -> str:
     """Call the named tool with the given arguments. Returns result as a string."""
+    # Rename the span from the generic "dispatch_tool" to the actual tool
+    get_client().update_current_span(name=f"tool:{name}")
     handler = TOOL_REGISTRY.get(name)
     if handler is None:
         return f"Error: unknown tool '{name}'"

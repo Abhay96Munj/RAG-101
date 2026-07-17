@@ -10,8 +10,10 @@ which avoids unnecessarily reloading model weights and rebuilding BM25 on every 
 """
 
 from contextlib import asynccontextmanager
+import os
 import torch
 from fastapi import FastAPI
+from langfuse import get_client
 from sentence_transformers import SentenceTransformer, CrossEncoder
 from app.api.v1 import chat, ingest, agent
 from app.core.config import EMBEDDING_MODEL, RERANKER_MODEL
@@ -56,9 +58,17 @@ async def lifespan(app: FastAPI):
     # handlers can use request.app.state.rag if they prefer.
     app.state.rag = state
 
+    # 7. Langfuse tracing — enabled purely by env vars; without keys every
+    #    @observe decorator is a no-op and the app runs exactly as before.
+    if os.getenv("LANGFUSE_PUBLIC_KEY"):
+        print(f"[OK] Langfuse tracing -> {os.getenv('LANGFUSE_HOST', 'https://cloud.langfuse.com')}")
+    else:
+        print("[INFO] Langfuse keys not set - tracing disabled.")
+
     print("[OK] All resources loaded. Server is ready.\n")
     yield
-    # Shutdown — nothing to clean up
+    # Shutdown — flush any traces still buffered in the Langfuse client
+    get_client().shutdown()
     print("[*] Shutting down.")
 
 
