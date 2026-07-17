@@ -2,6 +2,7 @@
 Chat Router  —  POST /api/v1/chat/query
 """
 import asyncio
+from uuid import uuid4
 from fastapi import APIRouter, HTTPException
 from langfuse import observe
 from app.schemas.chat import ChatRequest, ChatResponse
@@ -17,17 +18,22 @@ router = APIRouter()
 @observe(name="chat-query")
 async def query(body: ChatRequest) -> ChatResponse:
     question = body.question
+    # Same ID scheme the agent uses (AgentSession) — short readable ID
+    query_id = uuid4().hex[:8]
 
     # Run CPU-bound work in a thread so the async event loop stays unblocked
     results = await asyncio.to_thread(hybrid_retrieve, question, body.top_k)
     reranked_result = await asyncio.to_thread(rerank_chunks, question, results, body.rerank_top_n)
 
     # Every candidate fell below RERANK_SCORE_THRESHOLD — refuse here
-    # instead of paying for a Gemini call with junk context.
+    # instead of paying for a Gemini call with junk context. `refused`
+    # lets clients detect this without parsing the answer text.
     if not reranked_result:
         return {
             "answer": "I don't have enough information — nothing relevant to this question was found in the uploaded documents.",
-            "sources": []
+            "sources": [],
+            "refused": True,
+            "query_id": query_id
         }
 
     context = "\n\n---\n\n".join([r["text"] for r in reranked_result])
@@ -40,7 +46,9 @@ async def query(body: ChatRequest) -> ChatResponse:
 
     return {
         "answer": answer,
-        "sources": reranked_result
+        "sources": reranked_result,
+        "refused": False,
+        "query_id": query_id
     }
 
 

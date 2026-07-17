@@ -12,6 +12,7 @@ from google.genai import types
 from langfuse import observe, get_client
 from app.core.state import state
 from app.services.answer import hybrid_retrieve, rerank_chunks
+from app.services.knowledge_base import get_document_stats
 
 
 # ── Tool 1: Search Documents (RAG pipeline) ───────────────────────
@@ -80,19 +81,16 @@ def get_current_datetime(timezone: str = "Asia/Kolkata") -> str:
 # ── Tool 4: List Knowledge Base ───────────────────────────────────
 def list_knowledge_base() -> str:
     """List all PDF documents currently in the vector store with per-document chunk counts."""
-    with state.lock:
-        chunks = list(state.vector_chunks)
-    if not chunks:
+    # Stats come from the shared service (also used by GET /api/v1/documents);
+    # this tool only formats them into an LLM-friendly string.
+    docs = get_document_stats()
+    if not docs:
         return "The knowledge base is empty. No documents have been uploaded yet."
 
-    doc_stats: dict[str, int] = {}
-    for chunk in chunks:
-        src = chunk.get("source", "unknown")
-        doc_stats[src] = doc_stats.get(src, 0) + 1
-
-    lines = [f"Knowledge base: {len(doc_stats)} document(s), {len(chunks)} total chunks\n"]
-    for doc, count in sorted(doc_stats.items()):
-        lines.append(f"  - {doc}  ({count} chunk(s))")
+    total_chunks = sum(d["chunk_count"] for d in docs)
+    lines = [f"Knowledge base: {len(docs)} document(s), {total_chunks} total chunks\n"]
+    for d in docs:
+        lines.append(f"  - {d['filename']}  ({d['chunk_count']} chunk(s))")
     return "\n".join(lines)
 
 
