@@ -15,7 +15,7 @@ import torch
 from fastapi import FastAPI
 from langfuse import get_client
 from sentence_transformers import SentenceTransformer, CrossEncoder
-from app.api.v1 import chat, ingest, agent
+from app.api.v1 import chat, ingest, agent, documents
 from app.core.config import EMBEDDING_MODEL, RERANKER_MODEL
 from app.core.state import state
 from app.services.load_llm import load_llm, load_vector_store, build_bm25_index
@@ -80,9 +80,10 @@ app = FastAPI(
 )
 
 # Register routers
-app.include_router(chat.router,   prefix="/api/v1/chat",   tags=["Chat"])
-app.include_router(ingest.router, prefix="/api/v1/ingest", tags=["Ingest"])
-app.include_router(agent.router,  prefix="/api/v1/agent",  tags=["Agent"])
+app.include_router(chat.router,      prefix="/api/v1/chat",      tags=["Chat"])
+app.include_router(ingest.router,    prefix="/api/v1/ingest",    tags=["Ingest"])
+app.include_router(agent.router,     prefix="/api/v1/agent",     tags=["Agent"])
+app.include_router(documents.router, prefix="/api/v1/documents", tags=["Documents"])
 
 
 @app.get("/health", tags=["Health"])

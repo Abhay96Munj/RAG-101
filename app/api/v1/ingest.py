@@ -21,6 +21,20 @@ async def upload(file: UploadFile = File(...)):
     os.makedirs(PDFS_DIR, exist_ok=True)
     file_path = os.path.join(PDFS_DIR, filename)
 
+    # Reject duplicates BEFORE saving — re-ingesting the same file would add
+    # a second copy of every chunk to the index, and deleting/re-indexing
+    # isn't supported yet. A warning after the fact would be useless: by the
+    # time the client saw it, the chunks would already be duplicated.
+    if os.path.exists(file_path):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"'{filename}' has already been ingested. Re-uploading it would "
+                "duplicate its chunks in the index (deleting/re-indexing is not "
+                "supported yet)."
+            )
+        )
+
     content = await file.read()
     with open(file_path, "wb") as buffer:
         buffer.write(content)

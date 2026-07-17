@@ -25,3 +25,5 @@ class SourceChunk(BaseModel):
 class ChatResponse(BaseModel):
     answer: str
     sources: List[SourceChunk]
+    refused: bool = False            # True when nothing relevant was found — no LLM call was made
+    query_id: Optional[str] = None   # set by /query; cross-references logs/traces like the agent's
